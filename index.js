@@ -302,7 +302,7 @@ async function generatePDF(title, content, date) {
   const pdfPath  = path.join(tmp, `sched_${Date.now()}.pdf`);
   fs.writeFileSync(jsonPath, JSON.stringify({ title, content, date }));
   await new Promise((resolve, reject) => {
-    const proc = exec(`python3 "${GENERIC_SCRIPT}" "${jsonPath}" "${pdfPath}" 2>&1 || python "${GENERIC_SCRIPT}" "${jsonPath}" "${pdfPath}"`);
+    const proc = exec(`python3 "${GENERIC_SCRIPT}" "${jsonPath}" "${pdfPath}"`);
     setTimeout(() => { proc.kill(); reject(new Error('PDF generation timed out.')); }, 30000);
     proc.on('close', code => {
       try { fs.unlinkSync(jsonPath); } catch {}
