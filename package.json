@@ -1,0 +1,13 @@
+{
+  "name": "schedulebot",
+  "version": "1.0.0",
+  "main": "index.js",
+  "engines": { "node": ">=20" },
+  "dependencies": {
+    "telegraf": "^4.16.3",
+    "@anthropic-ai/sdk": "^0.39.0",
+    "dropbox": "^10.34.0",
+    "node-fetch": "^2.7.0",
+    "node-cron": "^3.0.3"
+  }
+}
