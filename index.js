@@ -272,7 +272,9 @@ You have two possible response types:
 2. If the user is QUERYING the schedule (asking what's on a day, range, week, etc.):
    Return ONLY: { "action": "reply", "message": "...your formatted plain-text response..." }
 
-Return only valid JSON. No markdown fences, no explanation.`;
+Return only valid JSON. No markdown fences, no explanation.
+
+IMPORTANT: This bot CAN generate PDF documents. Do NOT tell the user you cannot generate PDFs — that is false. If they ask for a PDF, tell them to say "pdf" or "pdf this week's schedule" and it will be handled automatically.`;
 
     const raw    = await askClaude([{ role: 'user', content: prompt }], 2048);
     const result = JSON.parse(stripFences(raw));
@@ -300,7 +302,7 @@ async function generatePDF(title, content, date) {
   const pdfPath  = path.join(tmp, `sched_${Date.now()}.pdf`);
   fs.writeFileSync(jsonPath, JSON.stringify({ title, content, date }));
   await new Promise((resolve, reject) => {
-    const proc = exec(`python3 "${GENERIC_SCRIPT}" "${jsonPath}" "${pdfPath}"`);
+    const proc = exec(`python3 "${GENERIC_SCRIPT}" "${jsonPath}" "${pdfPath}" 2>&1 || python "${GENERIC_SCRIPT}" "${jsonPath}" "${pdfPath}"`);
     setTimeout(() => { proc.kill(); reject(new Error('PDF generation timed out.')); }, 30000);
     proc.on('close', code => {
       try { fs.unlinkSync(jsonPath); } catch {}
