@@ -1,11 +1,14 @@
 'use strict';
 
-const { Telegraf }          = require('telegraf');
-const Anthropic             = require('@anthropic-ai/sdk');
+const { Telegraf }             = require('telegraf');
+const Anthropic                = require('@anthropic-ai/sdk');
 const { Dropbox, DropboxAuth } = require('dropbox');
-const fetch                 = require('node-fetch');
-const cron                  = require('node-cron');
-const fs                    = require('fs');
+const fetch                    = require('node-fetch');
+const cron                     = require('node-cron');
+const fs                       = require('fs');
+const { exec }                 = require('child_process');
+const os                       = require('os');
+const path                     = require('path');
 
 // ── Config ─────────────────────────────────────────────────────────────────
 const BOT_TOKEN   = process.env.BOT_TOKEN;
@@ -288,6 +291,61 @@ Return only valid JSON. No markdown fences, no explanation.`;
   }
 }
 
+// ── PDF generation ────────────────────────────────────────────────────────
+const GENERIC_SCRIPT = path.join(__dirname, 'report_generic.py');
+
+async function generatePDF(title, content, date) {
+  const tmp      = os.tmpdir();
+  const jsonPath = path.join(tmp, `sched_${Date.now()}.json`);
+  const pdfPath  = path.join(tmp, `sched_${Date.now()}.pdf`);
+  fs.writeFileSync(jsonPath, JSON.stringify({ title, content, date }));
+  await new Promise((resolve, reject) => {
+    const proc = exec(`python3 "${GENERIC_SCRIPT}" "${jsonPath}" "${pdfPath}"`);
+    setTimeout(() => { proc.kill(); reject(new Error('PDF generation timed out.')); }, 30000);
+    proc.on('close', code => {
+      try { fs.unlinkSync(jsonPath); } catch {}
+      if (code === 0) resolve();
+      else reject(new Error(`PDF renderer exited with code ${code}`));
+    });
+  });
+  return pdfPath;
+}
+
+function formatScheduleAsMarkdown(schedule, startDate, endDate) {
+  const lines = [];
+  const cur = new Date(startDate + 'T12:00:00Z');
+  const end = new Date(endDate   + 'T12:00:00Z');
+  while (cur <= end) {
+    const key     = cur.toISOString().slice(0, 10);
+    const entries = schedule[key] || [];
+    lines.push(`## ${key}`);
+    if (entries.length === 0) {
+      lines.push('Nothing scheduled.');
+    } else {
+      entries.forEach(e =>
+        lines.push(`- ${e.time || '?'} — ${e.job ? e.job + ' ' : ''}${e.description || ''}`)
+      );
+    }
+    lines.push('');
+    cur.setUTCDate(cur.getUTCDate() + 1);
+  }
+  return lines.join('\n');
+}
+
+function formatBreaksAsMarkdown(breaks, date) {
+  if (breaks.length === 0) return 'No cylinder breaks due.';
+  const lines = [
+    `## Cylinder Breaks Due — ${date}`,
+    '',
+    '| Job | Set | Cylinders | Break Day | Cast Date |',
+    '|-----|-----|-----------|-----------|-----------|',
+    ...breaks.map(b =>
+      `| ${b.job} | ${b.setNum} | ${b.count} | ${b.days}-day | ${b.castDate} |`
+    ),
+  ];
+  return lines.join('\n');
+}
+
 // ── Commands ───────────────────────────────────────────────────────────────
 const HELP_TEXT =
 `📋 MET SCHEDULE BOT
@@ -315,8 +373,60 @@ bot.command('reset', ctx => ctx.reply('🔄 Reset. Ready.'));
 
 // ── Message handler ────────────────────────────────────────────────────────
 bot.on('message', async ctx => {
-  const text = ctx.message.text?.trim();
+  const text  = ctx.message.text?.trim();
   if (!text || text.startsWith('/')) return;
+  const lower = text.toLowerCase();
+
+  // PDF of schedule for a range
+  if (/pdf|schedule.*pdf|pdf.*schedule/i.test(lower)) {
+    try {
+      await ctx.reply('⚙️ Generating schedule PDF...');
+      const d        = await dbx();
+      const schedule = loadSchedule();
+      const date     = today();
+
+      // Ask Claude which date range the user wants
+      const rangeRaw = await askClaude([{ role: 'user', content:
+        `Today is ${date}. The user said: "${text}"\n` +
+        `Return only JSON: { "start": "YYYY-MM-DD", "end": "YYYY-MM-DD", "label": "short description" }\n` +
+        `Default to today through 7 days from now if no range specified.`
+      }], 256);
+      const range    = JSON.parse(stripFences(rangeRaw));
+      const content  = formatScheduleAsMarkdown(schedule, range.start, range.end);
+      const pdfPath  = await generatePDF(`Schedule — ${range.label}`, content, date);
+
+      await ctx.replyWithDocument(
+        { source: fs.readFileSync(pdfPath), filename: `MET_Schedule_${range.start}_${range.end}.pdf` },
+        { caption: '📄 Here you go.' }
+      );
+      try { fs.unlinkSync(pdfPath); } catch {}
+    } catch (e) {
+      await ctx.reply(`❌ PDF generation failed: ${e.message}`);
+    }
+    return;
+  }
+
+  // PDF of cylinder break log
+  if (/break.*pdf|pdf.*break|break.*log/i.test(lower)) {
+    try {
+      await ctx.reply('⚙️ Generating break log PDF...');
+      const d      = await dbx();
+      const date   = today();
+      const breaks = await getBreaksDue(d, date);
+      const content = formatBreaksAsMarkdown(breaks, date);
+      const pdfPath = await generatePDF('Cylinder Break Log', content, date);
+
+      await ctx.replyWithDocument(
+        { source: fs.readFileSync(pdfPath), filename: `MET_BreakLog_${date}.pdf` },
+        { caption: '📄 Here you go.' }
+      );
+      try { fs.unlinkSync(pdfPath); } catch {}
+    } catch (e) {
+      await ctx.reply(`❌ PDF generation failed: ${e.message}`);
+    }
+    return;
+  }
+
   await handleScheduleQuery(ctx, text);
 });
 

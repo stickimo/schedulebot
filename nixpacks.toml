@@ -1,8 +1,8 @@
 [phases.setup]
-nixPkgs = ["nodejs_20"]
+nixPkgs = ["nodejs_20", "python311", "python311Packages.pip"]
 
 [phases.install]
-cmds = ["npm install --production"]
+cmds = ["npm install --production", "pip install reportlab --break-system-packages"]
 
 [start]
 cmd = "node index.js"
