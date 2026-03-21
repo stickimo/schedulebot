@@ -266,7 +266,7 @@ You have two possible response types:
 1. If the user is MODIFYING the schedule (adding, removing, moving, updating entries):
    Return ONLY: { "action": "update", "schedule": { ...full updated schedule... } }
    - Each date key is YYYY-MM-DD
-   - Each entry: { "time": "HH:MM", "job": "26-606" (if applicable), "description": "what they're doing" }
+   - Value is ALWAYS an array, even for a single entry: [{ "time": "HH:MM", "job": "26-606", "description": "what they're doing" }]
    - Prune dates older than 30 days from today when returning the updated schedule
 
 2. If the user is QUERYING the schedule (asking what's on a day, range, week, etc.):
@@ -319,7 +319,8 @@ function formatScheduleAsMarkdown(schedule, startDate, endDate) {
   const end = new Date(endDate   + 'T12:00:00Z');
   while (cur <= end) {
     const key     = cur.toISOString().slice(0, 10);
-    const entries = schedule[key] || [];
+    const raw     = schedule[key];
+    const entries = Array.isArray(raw) ? raw : raw ? [raw] : [];
     lines.push(`## ${key}`);
     if (entries.length === 0) {
       lines.push('Nothing scheduled.');
