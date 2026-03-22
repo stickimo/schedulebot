@@ -41,6 +41,20 @@ def hex_color(val, fallback):
             pass
     return fallback
 
+def luminance(c):
+    """Relative luminance of a ReportLab color (0=black, 1=white)."""
+    def chan(v):
+        return v / 12.92 if v <= 0.03928 else ((v + 0.055) / 1.055) ** 2.4
+    try:
+        r, g, b = c.red, c.green, c.blue
+        return 0.2126 * chan(r) + 0.7152 * chan(g) + 0.0722 * chan(b)
+    except Exception:
+        return 0.5
+
+def readable_on(bg):
+    """Return black or white, whichever is more readable on the given background."""
+    return colors.white if luminance(bg) < 0.35 else colors.black
+
 def build(data, output_path):
     title   = data.get('title', 'Report')
     content = data.get('content', '')
@@ -49,15 +63,25 @@ def build(data, output_path):
 
     # ── Resolve theme colors ───────────────────────────────────────────────
     HEADER_BG    = hex_color(theme.get('header_bg'),    colors.HexColor('#2D2D2D'))
-    HEADER_TEXT  = hex_color(theme.get('header_text'),  colors.white)
     H2_BG        = hex_color(theme.get('h2_bg'),        colors.HexColor('#4A7FB5'))
-    H2_TEXT      = hex_color(theme.get('h2_text'),      colors.white)
-    H3_COLOR     = hex_color(theme.get('h3_color'),     colors.HexColor('#2D2D2D'))
-    ACCENT       = hex_color(theme.get('accent'),       colors.HexColor('#00D4FF'))
-    BODY_COLOR   = hex_color(theme.get('body_color'),   colors.black)
-    ROW_ALT      = hex_color(theme.get('row_alt_bg'),   colors.HexColor('#F5F5F5'))
     TABLE_HDR_BG = hex_color(theme.get('table_hdr_bg'), colors.HexColor('#2D2D2D'))
+    ROW_ALT      = hex_color(theme.get('row_alt_bg'),   colors.HexColor('#F5F5F5'))
+    ACCENT       = hex_color(theme.get('accent'),       colors.HexColor('#00D4FF'))
     PAGE_BG      = hex_color(theme.get('page_bg'),      None)
+
+    # Text colors — use Claude's value if provided, otherwise auto-pick for contrast
+    HEADER_TEXT  = hex_color(theme.get('header_text'),  readable_on(HEADER_BG))
+    H2_TEXT      = hex_color(theme.get('h2_text'),      readable_on(H2_BG))
+    H3_COLOR     = hex_color(theme.get('h3_color'),     colors.HexColor('#2D2D2D'))
+    BODY_COLOR   = hex_color(theme.get('body_color'),   readable_on(PAGE_BG) if PAGE_BG else colors.black)
+
+    # Safety override — always ensure text is actually readable against its background
+    if luminance(HEADER_BG) < 0.35 and luminance(HEADER_TEXT) < 0.35:
+        HEADER_TEXT = colors.white
+    if luminance(H2_BG) < 0.35 and luminance(H2_TEXT) < 0.35:
+        H2_TEXT = colors.white
+    if PAGE_BG and luminance(PAGE_BG) < 0.35 and luminance(BODY_COLOR) < 0.35:
+        BODY_COLOR = colors.white
 
     # ── Resolve fonts ──────────────────────────────────────────────────────
     raw_font = theme.get('body_font', 'Helvetica')
