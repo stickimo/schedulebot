@@ -69,19 +69,27 @@ def build(data, output_path):
     ACCENT       = hex_color(theme.get('accent'),       colors.HexColor('#00D4FF'))
     PAGE_BG      = hex_color(theme.get('page_bg'),      None)
 
-    # Text colors — use Claude's value if provided, otherwise auto-pick for contrast
-    HEADER_TEXT  = hex_color(theme.get('header_text'),  readable_on(HEADER_BG))
-    H2_TEXT      = hex_color(theme.get('h2_text'),      readable_on(H2_BG))
-    H3_COLOR     = hex_color(theme.get('h3_color'),     colors.HexColor('#2D2D2D'))
-    BODY_COLOR   = hex_color(theme.get('body_color'),   readable_on(PAGE_BG) if PAGE_BG else colors.black)
+    # Text colors — auto-pick for contrast, Claude's value respected but safety-checked
+    HEADER_TEXT  = hex_color(theme.get('header_text'), readable_on(HEADER_BG))
+    H2_TEXT      = hex_color(theme.get('h2_text'),     readable_on(H2_BG))
+    H3_COLOR     = hex_color(theme.get('h3_color'),    colors.HexColor('#2D2D2D'))
+    BODY_COLOR   = hex_color(theme.get('body_color'),  readable_on(PAGE_BG) if PAGE_BG else colors.black)
 
-    # Safety override — always ensure text is actually readable against its background
-    if luminance(HEADER_BG) < 0.35 and luminance(HEADER_TEXT) < 0.35:
-        HEADER_TEXT = colors.white
-    if luminance(H2_BG) < 0.35 and luminance(H2_TEXT) < 0.35:
-        H2_TEXT = colors.white
-    if PAGE_BG and luminance(PAGE_BG) < 0.35 and luminance(BODY_COLOR) < 0.35:
-        BODY_COLOR = colors.white
+    # Table text must be readable against row backgrounds (not page bg)
+    # Use the darker of the two row bgs as the reference — if readable there, readable everywhere
+    TABLE_TEXT    = readable_on(ROW_ALT)
+    TABLE_HDR_TEXT = readable_on(TABLE_HDR_BG)
+
+    # Safety overrides — catch any remaining contrast failures
+    if luminance(HEADER_BG)   < 0.35 and luminance(HEADER_TEXT) < 0.35:   HEADER_TEXT    = colors.white
+    if luminance(HEADER_BG)   > 0.65 and luminance(HEADER_TEXT) > 0.65:   HEADER_TEXT    = colors.black
+    if luminance(H2_BG)       < 0.35 and luminance(H2_TEXT)     < 0.35:   H2_TEXT        = colors.white
+    if luminance(H2_BG)       > 0.65 and luminance(H2_TEXT)     > 0.65:   H2_TEXT        = colors.black
+    if luminance(TABLE_HDR_BG)< 0.35 and luminance(TABLE_HDR_TEXT) < 0.35: TABLE_HDR_TEXT = colors.white
+    if PAGE_BG and luminance(PAGE_BG) < 0.35 and luminance(BODY_COLOR) < 0.35: BODY_COLOR = colors.white
+    if PAGE_BG and luminance(PAGE_BG) > 0.65 and luminance(BODY_COLOR) > 0.65: BODY_COLOR = colors.black
+    # H3 sits on page background
+    if PAGE_BG and luminance(PAGE_BG) < 0.35 and luminance(H3_COLOR) < 0.35: H3_COLOR = colors.white
 
     # ── Resolve fonts ──────────────────────────────────────────────────────
     raw_font = theme.get('body_font', 'Helvetica')
@@ -99,8 +107,8 @@ def build(data, output_path):
     h3     = ParagraphStyle('h3',     fontName=font_bold,   fontSize=10, textColor=H3_COLOR,    spaceBefore=8, spaceAfter=4)
     body   = ParagraphStyle('body',   fontName=font_normal, fontSize=9,  textColor=BODY_COLOR,  leading=13, spaceAfter=4)
     bold   = ParagraphStyle('bold',   fontName=font_bold,   fontSize=9,  textColor=BODY_COLOR,  leading=13)
-    th     = ParagraphStyle('th',     fontName=font_bold,   fontSize=8,  textColor=colors.white)
-    td     = ParagraphStyle('td',     fontName=font_normal, fontSize=8,  textColor=BODY_COLOR,  leading=11)
+    th     = ParagraphStyle('th',     fontName=font_bold,   fontSize=8,  textColor=TABLE_HDR_TEXT)
+    td     = ParagraphStyle('td',     fontName=font_normal, fontSize=8,  textColor=TABLE_TEXT,  leading=11)
     bullet = ParagraphStyle('bullet', fontName=font_normal, fontSize=9,  textColor=BODY_COLOR,  leading=13, leftIndent=12, spaceAfter=2, bulletIndent=0)
 
     # ── Document ───────────────────────────────────────────────────────────
