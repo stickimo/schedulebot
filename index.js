@@ -380,47 +380,41 @@ bot.on('message', async ctx => {
   if (!text || text.startsWith('/')) return;
   const lower = text.toLowerCase();
 
-  // PDF of schedule for a range
-  if (/pdf|schedule.*pdf|pdf.*schedule/i.test(lower)) {
+  // PDF request — Claude generates the full content based on the user's exact request
+  if (/pdf|schedule.*pdf|pdf.*schedule|break.*pdf|pdf.*break|break.*log/i.test(lower)) {
     try {
-      await ctx.reply('⚙️ Generating schedule PDF...');
+      await ctx.reply('⚙️ Generating PDF...');
       const d        = await dbx();
       const schedule = loadSchedule();
       const date     = today();
+      const breaks   = await getBreaksDue(d, date);
 
-      // Ask Claude which date range the user wants
-      const rangeRaw = await askClaude([{ role: 'user', content:
-        `Today is ${date}. The user said: "${text}"\n` +
-        `Return only JSON: { "start": "YYYY-MM-DD", "end": "YYYY-MM-DD", "label": "short description" }\n` +
-        `Default to today through 7 days from now if no range specified.`
-      }], 256);
-      const range    = JSON.parse(stripFences(rangeRaw));
-      const content  = formatScheduleAsMarkdown(schedule, range.start, range.end);
-      const pdfPath  = await generatePDF(`Schedule — ${range.label}`, content, date);
+      const prompt =
+`You are generating content for a PDF document for a field geotechnical technician.
+Today is ${date}.
 
-      await ctx.replyWithDocument(
-        { source: fs.readFileSync(pdfPath), filename: `MET_Schedule_${range.start}_${range.end}.pdf` },
-        { caption: '📄 Here you go.' }
-      );
-      try { fs.unlinkSync(pdfPath); } catch {}
-    } catch (e) {
-      await ctx.reply(`❌ PDF generation failed: ${e.message}`);
-    }
-    return;
-  }
+Current schedule (JSON):
+${JSON.stringify(schedule, null, 2)}
 
-  // PDF of cylinder break log
-  if (/break.*pdf|pdf.*break|break.*log/i.test(lower)) {
-    try {
-      await ctx.reply('⚙️ Generating break log PDF...');
-      const d      = await dbx();
-      const date   = today();
-      const breaks = await getBreaksDue(d, date);
-      const content = formatBreaksAsMarkdown(breaks, date);
-      const pdfPath = await generatePDF('Cylinder Break Log', content, date);
+Cylinder breaks due today:
+${JSON.stringify(breaks, null, 2)}
+
+User request: "${text}"
+
+Generate the full PDF content as markdown. Honor any special requests exactly —
+themes, motivational quotes, specific date ranges, formatting styles, whatever they ask for.
+Use ## for section headers, | tables |, - bullets, and **bold** as needed.
+Include day names with dates (e.g. "Monday March 23").
+
+Return only a JSON object: { "title": "short title", "content": "full markdown content" }
+No explanation, no fences.`;
+
+      const raw    = await askClaude([{ role: 'user', content: prompt }], 2048);
+      const result = JSON.parse(stripFences(raw));
+      const pdfPath = await generatePDF(result.title, result.content, date);
 
       await ctx.replyWithDocument(
-        { source: fs.readFileSync(pdfPath), filename: `MET_BreakLog_${date}.pdf` },
+        { source: fs.readFileSync(pdfPath), filename: `MET_${result.title.replace(/\s+/g, '_')}_${date}.pdf` },
         { caption: '📄 Here you go.' }
       );
       try { fs.unlinkSync(pdfPath); } catch {}
