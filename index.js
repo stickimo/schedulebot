@@ -296,11 +296,11 @@ IMPORTANT: This bot CAN generate PDF documents. Do NOT tell the user you cannot 
 // ── PDF generation ────────────────────────────────────────────────────────
 const GENERIC_SCRIPT = path.join(__dirname, 'report_generic.py');
 
-async function generatePDF(title, content, date) {
+async function generatePDF(title, content, date, theme = null) {
   const tmp      = os.tmpdir();
   const jsonPath = path.join(tmp, `sched_${Date.now()}.json`);
   const pdfPath  = path.join(tmp, `sched_${Date.now()}.pdf`);
-  fs.writeFileSync(jsonPath, JSON.stringify({ title, content, date }));
+  fs.writeFileSync(jsonPath, JSON.stringify({ title, content, date, theme }));
   await new Promise((resolve, reject) => {
     const proc = exec(`python3 "${GENERIC_SCRIPT}" "${jsonPath}" "${pdfPath}"`);
     setTimeout(() => { proc.kill(); reject(new Error('PDF generation timed out.')); }, 30000);
@@ -406,12 +406,18 @@ themes, motivational quotes, specific date ranges, formatting styles, whatever t
 Use ## for section headers, | tables |, - bullets, and **bold** as needed.
 Include day names with dates (e.g. "Monday March 23").
 
-Return only a JSON object: { "title": "short title", "content": "full markdown content" }
+You can also control the visual theme via a theme object. All fields optional:
+  header_bg (hex), header_text (hex), h2_bg (hex), h2_text (hex),
+  h3_color (hex), accent (hex), body_color (hex), page_bg (hex or null),
+  body_font ("Helvetica" | "Times-Roman" | "Courier"),
+  row_alt_bg (hex), table_hdr_bg (hex)
+
+Return only a JSON object: { "title": "short title", "content": "full markdown content", "theme": { ...or null } }
 No explanation, no fences.`;
 
       const raw    = await askClaude([{ role: 'user', content: prompt }], 2048);
       const result = JSON.parse(stripFences(raw));
-      const pdfPath = await generatePDF(result.title, result.content, date);
+      const pdfPath = await generatePDF(result.title, result.content, date, result.theme || null);
 
       await ctx.replyWithDocument(
         { source: fs.readFileSync(pdfPath), filename: `MET_${result.title.replace(/\s+/g, '_')}_${date}.pdf` },
