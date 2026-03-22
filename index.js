@@ -118,7 +118,9 @@ function addDays(dateStr, days) {
   return d.toISOString().slice(0, 10);
 }
 
-function today() { return new Date().toISOString().slice(0, 10); }
+function today() {
+  return new Date().toLocaleDateString('en-CA', { timeZone: 'America/Denver' });
+}
 
 async function loadConfirmedBreaks(d) {
   try {
