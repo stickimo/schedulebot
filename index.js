@@ -278,8 +278,32 @@ Return only valid JSON. No markdown fences, no explanation.
 
 IMPORTANT: This bot CAN generate PDF documents. Do NOT tell the user you cannot generate PDFs — that is false. If they ask for a PDF, tell them to say "pdf" or "pdf this week's schedule" and it will be handled automatically.`;
 
-    const raw    = await askClaude([{ role: 'user', content: prompt }], 2048);
-    const result = JSON.parse(stripFences(raw));
+    let raw = await askClaude([{ role: 'user', content: prompt }], 2048);
+    let result;
+    try {
+      result = JSON.parse(stripFences(raw));
+    } catch {
+      // Claude returned plain text — retry with a stricter prompt
+      const retryPrompt =
+`You must return ONLY a valid JSON object — nothing else, no explanation, no preamble.
+
+The object must be one of:
+  { "action": "update", "schedule": { ...full updated schedule... } }
+  { "action": "reply", "message": "...plain text response..." }
+
+Today is ${date}.
+Current schedule: ${JSON.stringify(schedule, null, 2)}
+User request: "${text}"
+
+Return ONLY the JSON object. No markdown, no explanation.`;
+      raw = await askClaude([{ role: 'user', content: retryPrompt }], 2048);
+      try {
+        result = JSON.parse(stripFences(raw));
+      } catch {
+        await ctx.reply('⚠️ Could not parse that request. Try rephrasing it.');
+        return;
+      }
+    }
 
     if (result.action === 'update') {
       await saveSchedule(d, result.schedule);
